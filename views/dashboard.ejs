@@ -23,19 +23,8 @@
     <!-- Dashboard Section -->
     <div class="dashboard-container">
         <h1>Welcome, <%= user.displayName %>!</h1>
-        <p>Welcome to the Hackathon Dashboard. Ready to make some innovative creations?</p>
-
-        <!-- Hackathon Images -->
-        <div class="hackathon-images">
-            <img src="/images/hackathon1.jpg" alt="Hackathon Image 1">
-            <img src="/images/hackathon2.jpg" alt="Hackathon Image 2">
-        </div>
-
-        <!-- Countdown Timer -->
-        <div class="countdown-container">
-            <h2>Time Left:</h2>
-            <div id="countdown-timer">00:00:00</div>
-        </div>
+        <p>Email: <%= user.emails[0].value %></p>
+        <a href="/auth/logout" class="logout-btn">Logout</a>
     </div>
 
     <!-- About Section -->
