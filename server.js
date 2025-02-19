@@ -4,54 +4,37 @@ import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import dotenv from "dotenv";
 import bodyParser from "body-parser";
-import { Sequelize, DataTypes } from "sequelize";
+import pkg from 'pg';
+const { Client } = pkg;
 
 dotenv.config();
 
 const app = express();
-const port = 3000;
+const port = 3000 || process.env.PORT;
 
-// Initialize Sequelize to connect to PostgreSQL
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
-  dialect: "postgres",
-  protocol: "postgres",
-  dialectOptions: {
-    ssl: {
-      require: true,
+// const db = new Client({
+//   connectionString: process.env.DATABASE_URL,
+//   ssl: {
+//       rejectUnauthorized: false,
+//   }
+// });
+
+// supabase
+const db = new Client({
+  connectionString: process.env.SUPABASE_URL,
+  ssl: {
       rejectUnauthorized: false,
-    },
-  },
+  }
 });
 
-// Test the database connection
-sequelize.authenticate()
-  .then(() => console.log('Database connected successfully'))
-  .catch(err => console.log('Error connecting to the database: ', err));
-
-// Define User model to store Google profile data
-const User = sequelize.define('User', {
-  googleId: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    unique: true,
-  },
-  displayName: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  email: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  imageUrl: {
-    type: DataTypes.STRING,
-  },
-}, {
-  timestamps: true,
-});
-
-// Sync the model with the database
-sequelize.sync();
+// const db = new Client({
+//   user: process.env.DB_USER,
+//   host: process.env.DB_HOST,
+//   database: process.env.DB_NAME,
+//   password: process.env.DB_PASSWORD,
+//   port: process.env.DB_PORT,
+// });
+db.connect();
 
 // Session setup
 app.use(
@@ -62,6 +45,10 @@ app.use(
   })
 );
 app.use(express.static('public'));
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+app.set("view engine", "ejs");
+
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -75,20 +62,7 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        // Check if the user already exists in the database
-        let user = await User.findOne({ where: { googleId: profile.id } });
-
-        if (!user) {
-          // If the user doesn't exist, create a new user
-          user = await User.create({
-            googleId: profile.id,
-            displayName: profile.displayName,
-            email: profile.emails[0].value,
-            imageUrl: profile.photos[0].value,
-          });
-        }
-
-        return done(null, user);
+        return done(null, profile); // Temporary placeholder
       } catch (err) {
         return done(err);
       }
@@ -97,12 +71,11 @@ passport.use(
 );
 
 passport.serializeUser((user, done) => {
-  done(null, user.id);
+  done(null, user);
 });
 
-passport.deserializeUser(async (id, done) => {
+passport.deserializeUser(async (user, done) => {
   try {
-    const user = await User.findByPk(id);
     done(null, user);
   } catch (err) {
     done(err);
@@ -122,7 +95,13 @@ app.get(
 app.get(
   "/auth/google/callback",
   passport.authenticate("google", { failureRedirect: "/" }),
-  (req, res) => {
+  async (req, res) => {
+    // Successful authentication, redirect to dashboard.
+    try {
+      await db.query("INSERT INTO students (username, email) VALUES ($1, $2)", [req.user.displayName, req.user.emails[0].value]);
+    } catch (err) {
+        console.log(err);
+    }
     res.redirect("/dashboard");
   }
 );
