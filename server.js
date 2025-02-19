@@ -1,75 +1,43 @@
-
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import express from "express";
 import session from "express-session";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
-import dotenv from "dotenv";
-import bodyParser from "body-parser";
-// import { Sequelize, DataTypes } from "sequelize"; // Commented out
+// import pkg from "pg";
 
+// const { Client } = pkg;
 dotenv.config();
+
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
+// Database Connection (Supabase/PostgreSQL) - COMMENTED OUT
 /*
-// Initialize Sequelize to connect to PostgreSQL
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
-  dialect: "postgres",
-  protocol: "postgres",
-  dialectOptions: {
-    ssl: {
-      require: true,
-      rejectUnauthorized: false,
-    },
-  },
+const db = new Client({
+  connectionString: process.env.SUPABASE_URL,
+  ssl: { rejectUnauthorized: false },
 });
-
-// Test the database connection
-sequelize.authenticate()
-  .then(() => console.log('Database connected successfully'))
-  .catch(err => console.log('Error connecting to the database: ', err));
-
-// Define User model to store Google profile data
-const User = sequelize.define('User', {
-  googleId: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    unique: true,
-  },
-  displayName: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  email: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  imageUrl: {
-    type: DataTypes.STRING,
-  },
-}, {
-  timestamps: true,
-});
-
-// Sync the model with the database
-sequelize.sync();
+db.connect();
 */
 
-// Session setup
+// Session Setup
 app.use(
   session({
     secret: process.env.SESSION_SECRET,
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true,
   })
 );
-app.use(express.static('public'));
+app.use(express.static("public"));
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+app.set("view engine", "ejs");
+
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Passport Google OAuth strategy
+// Passport Google OAuth Strategy
 passport.use(
   new GoogleStrategy(
     {
@@ -79,23 +47,7 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        /*
-        // Check if the user already exists in the database
-        let user = await User.findOne({ where: { googleId: profile.id } });
-
-        if (!user) {
-          // If the user doesn't exist, create a new user
-          user = await User.create({
-            googleId: profile.id,
-            displayName: profile.displayName,
-            email: profile.emails[0].value,
-            imageUrl: profile.photos[0].value,
-          });
-        }
-
-        return done(null, user);
-        */
-        return done(null, profile); // Temporary placeholder
+        return done(null, profile);
       } catch (err) {
         return done(err);
       }
@@ -104,13 +56,12 @@ passport.use(
 );
 
 passport.serializeUser((user, done) => {
-  done(null, user.id);
+  done(null, user);
 });
 
-passport.deserializeUser(async (id, done) => {
+passport.deserializeUser((user, done) => {
   try {
-    // const user = await User.findByPk(id); // Commented out
-    done(null, id); // Temporary placeholder
+    done(null, user);
   } catch (err) {
     done(err);
   }
@@ -118,47 +69,107 @@ passport.deserializeUser(async (id, done) => {
 
 // Routes
 app.get("/", (req, res) => {
-  const countdown = getCountdown();
-  res.render("index", { countdown });
+  const eventTime = new Date("2025-02-22T00:00:00").getTime();
+  const now = new Date().getTime();
+  const difference = eventTime - now;
+
+  const countdown = {
+    days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+    hours: Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+    minutes: Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60)),
+    seconds: Math.floor((difference % (1000 * 60)) / 1000),
+  };
+
+  res.render("index.ejs", { countdown });
 });
 
-app.get(
-  "/auth/google",
-  passport.authenticate("google", { scope: ["profile", "email"] })
-);
+// Google Authentication Routes
+app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
 
 app.get(
   "/auth/google/callback",
   passport.authenticate("google", { failureRedirect: "/" }),
   async (req, res) => {
-    // Successful authentication, redirect to dashboard.
-    // try {
-    //   await db.query("INSERT INTO students (username, email) VALUES ($1, $2)", [req.user.displayName, req.user.emails[0].value]);
-    // } catch (err) {
-    //     console.log(err);
-    // }
-    res.redirect("/dashboard");
+    try {
+      const { displayName, emails } = req.user;
+      const email = emails[0].value;
+
+      // Database Query is Commented Out
+      /*
+      await db.query(
+        "INSERT INTO students (username, email) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING",
+        [displayName, email]
+      );
+      */
+
+      res.redirect("/dashboard");
+    } catch (err) {
+      console.error("Error:", err);
+      res.redirect("/");
+    }
   }
 );
 
+// Dashboard Route
 app.get("/dashboard", (req, res) => {
   if (!req.isAuthenticated()) {
     return res.redirect("/");
   }
-  res.render("dashboard", { user: req.user });
+  res.render("dashboard.ejs", { user: req.user });
 });
 
-app.get("/logout", (req, res) => {
+// Logout Route
+app.get("/logout", (req, res, next) => {
   req.logout((err) => {
-    if (err) {
-      return next(err);
-    }
-    req.session.destroy(() => {
-      res.redirect("/");
-    });
+    if (err) return next(err);
+    req.session.destroy(() => res.redirect("/"));
   });
 });
 
+// Project Submission Route - Database Code Commented Out
+app.post("/submit", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const { teamName, projectLink, projectDescription } = req.body;
+  const email = req.user.emails[0].value;
+
+  try {
+    /*
+    await db.query(
+      "INSERT INTO projects (team_name, project_link, project_description, submitted_by) VALUES ($1, $2, $3, $4)",
+      [teamName, projectLink, projectDescription, email]
+    );
+    */
+    res.redirect("/dashboard");
+  } catch (err) {
+    console.error("Submission Error:", err);
+    res.status(500).json({ error: "Failed to submit project" });
+  }
+});
+
+// Feedback Submission Route - Database Code Commented Out
+app.post("/feedback", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const { feedback } = req.body;
+  const email = req.user.emails[0].value;
+
+  try {
+    /*
+    await db.query("INSERT INTO feedback (email, feedback_text) VALUES ($1, $2)", [email, feedback]);
+    */
+    res.redirect("/dashboard");
+  } catch (err) {
+    console.error("Feedback Error:", err);
+    res.status(500).json({ error: "Failed to submit feedback" });
+  }
+});
+
+// Start Server
 app.listen(port, () => {
-  console.log(`✅ Server running on http://localhost:${port}`);
+  console.log(`Server running on http://localhost:${port}`);
 });
